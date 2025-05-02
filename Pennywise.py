@@ -1,129 +1,123 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import datetime, date
+from datetime import date
 
-DATA_FILE = "budget_data.csv"
+# Set page config
+st.set_page_config(page_title="PennyWise", layout="wide")
 
-# Load or create the data file
+# Load dataset or initialize
 def load_data():
     try:
-        df = pd.read_csv(DATA_FILE, parse_dates=["Date"])
+        return pd.read_csv("budget_data.csv", parse_dates=["Date"])
     except FileNotFoundError:
-        df = pd.DataFrame(columns=["Date", "Type", "Category", "Amount", "Notes"])
-    return df
+        return pd.DataFrame(columns=["Date", "Type", "Category", "Amount", "Notes", "Section"])
 
-def save_data(df):
-    df.to_csv(DATA_FILE, index=False)
-
-# Initialize
-st.set_page_config(page_title="PennyWise V5", layout="wide")
-st.markdown("## 💰 PennyWise V5")
-st.markdown("*Where your money meets mastery. Simple. Smart. Saving.*")
-
-# Load current data
 df = load_data()
 
-# Tabs layout
-tab1, tab2, tab3, tab4 = st.tabs(["🏠 Dashboard", "📝 Entries", "📈 Reports", "⚙️ Guide"])
+st.markdown("## 💰 PennyWise")
+st.markdown("### _Where your money meets mastery — Simple. Smart. Saving._")
 
-# ========== 🏠 DASHBOARD ==========
-with tab1:
-    st.header("📊 Dashboard Overview")
+# TABS Layout
+tabs = st.tabs(["📊 Dashboard", "📝 Entries", "🏖️ Holiday Budget", "👶 Child Expenses", "⚙️ Settings"])
+
+# --- Dashboard Tab ---
+with tabs[0]:
+    st.subheader("📊 Dashboard Overview")
 
     if df.empty:
-        st.info("No data found. Start by adding entries in the Entries tab.")
+        st.info("No data yet. Add entries in the Entries tab.")
     else:
-        df["Month"] = df["Date"].dt.strftime('%B')
-        df["Year"] = df["Date"].dt.year
-
+        col1, col2, col3 = st.columns(3)
         total_income = df[df["Type"] == "Income"]["Amount"].sum()
         total_expense = df[df["Type"] == "Expense"]["Amount"].sum()
         total_saving = df[df["Type"] == "Saving"]["Amount"].sum()
-        net_balance = total_income - total_expense
+        balance = total_income - total_expense
 
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("💵 Total Income", f"${total_income:,.2f}")
-        col2.metric("💸 Total Expenses", f"${total_expense:,.2f}")
-        col3.metric("💰 Savings", f"${total_saving:,.2f}")
-        col4.metric("📈 Net Balance", f"${net_balance:,.2f}", delta=f"${(net_balance - total_saving):,.2f}")
+        col1.metric("Total Income", f"${total_income:,.2f}")
+        col2.metric("Total Expenses", f"${total_expense:,.2f}")
+        col3.metric("Balance", f"${balance:,.2f}")
 
-        # Monthly bar chart (3D)
-        monthly_summary = df.groupby(["Month", "Type"])["Amount"].sum().reset_index()
-        fig = px.bar_3d(monthly_summary, x="Month", y="Type", z="Amount", color="Type", barmode="group")
-        st.plotly_chart(fig, use_container_width=True)
+        # 3D Chart: Pie by Type
+        st.plotly_chart(
+            px.pie(df, names="Type", values="Amount", title="Expense Breakdown by Type", hole=0.3).update_traces(textinfo='percent+label'),
+            use_container_width=True
+        )
 
-        # Savings trend
-        savings_trend = df[df["Type"] == "Saving"].groupby(["Month"])["Amount"].sum().reset_index()
-        fig2 = px.line_3d(savings_trend, x="Month", y="Amount", z=[1]*len(savings_trend), title="Monthly Savings Trend")
-        st.plotly_chart(fig2, use_container_width=True)
+        # 3D Chart: Bar by Category
+        st.plotly_chart(
+            px.bar_3d(df, x="Category", y="Amount", z="Type", title="Spending by Category and Type").update_layout(height=400),
+            use_container_width=True
+        )
 
-# ========== 📝 ENTRIES ==========
-with tab2:
-    st.header("📝 Add or Edit Budget Entries")
+# --- Entries Tab ---
+with tabs[1]:
+    st.subheader("📝 Add/Edit Entries")
+    num_rows = st.number_input("Rows to add", min_value=1, max_value=30, value=5)
 
-    st.markdown("#### ➕ Add Entries")
-    num_rows = st.number_input("How many rows to add?", min_value=1, max_value=30, value=5)
-
+    # Prepare new empty rows
     new_data = pd.DataFrame({
         "#": list(range(1, num_rows + 1)),
         "Date": [date.today()] * num_rows,
         "Type": ["Expense"] * num_rows,
         "Category": ["" for _ in range(num_rows)],
-        "Amount": [0.0 for _ in range(num_rows)],
-        "Notes": ["" for _ in range(num_rows)]
+        "Amount": [0.0] * num_rows,
+        "Notes": ["" for _ in range(num_rows)],
+        "Section": ["Main"] * num_rows,
     })
 
-    col_config = {
-        "#": st.column_config.NumberColumn(label="#", width="small", disabled=True),
-        "Date": st.column_config.DateColumn("Date", default=date.today()),
-        "Type": st.column_config.SelectboxColumn("Type", options=["Income", "Expense", "Saving"]),
-        "Category": st.column_config.TextColumn("Category"),
-        "Amount": st.column_config.NumberColumn("Amount", min_value=0.0, step=0.01),
-        "Notes": st.column_config.TextColumn("Notes")
-    }
-
-    edited = st.data_editor(new_data, column_config=col_config, hide_index=True, use_container_width=True)
+    edited = st.data_editor(
+        new_data,
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "#": st.column_config.NumberColumn(label="#", disabled=True),
+            "Date": st.column_config.DateColumn("Date", default=date.today()),
+            "Type": st.column_config.SelectboxColumn("Type", options=["Income", "Expense", "Saving"]),
+            "Category": st.column_config.TextColumn("Category"),
+            "Amount": st.column_config.NumberColumn("Amount", min_value=0.0, step=0.01),
+            "Notes": st.column_config.TextColumn("Notes"),
+            "Section": st.column_config.SelectboxColumn("Section", options=["Main", "Holiday", "Child"]),
+        }
+    )
 
     if st.button("💾 Save Entries"):
         valid = edited.dropna(subset=["Date", "Type", "Category", "Amount"])
         if not valid.empty:
-            df = pd.concat([df, valid[["Date", "Type", "Category", "Amount", "Notes"]]], ignore_index=True)
-            save_data(df)
-            st.success("✅ Entries saved successfully!")
+            df = pd.concat([df, valid], ignore_index=True)
+            df.to_csv("budget_data.csv", index=False)
+            st.success("✅ Entries saved.")
+        else:
+            st.warning("⚠️ Please complete required fields.")
 
-    st.markdown("#### ✏️ Edit Existing Entries")
+    # Optional Edit Existing
+    st.divider()
+    st.subheader("🔁 Existing Entries")
     if not df.empty:
-        edited_data = st.data_editor(df, num_rows="dynamic", use_container_width=True)
-        if st.button("🔁 Update All Entries"):
-            save_data(edited_data)
-            st.success("✅ All entries updated successfully!")
+        edited_existing = st.data_editor(df, key="edit_existing", use_container_width=True)
+        if st.button("💾 Save Edits"):
+            edited_existing.to_csv("budget_data.csv", index=False)
+            st.success("✅ Updates saved.")
+    else:
+        st.info("No existing entries.")
 
-# ========== 📈 REPORTS ==========
-with tab3:
-    st.header("📊 Reports & Categories")
-    if not df.empty:
-        with st.expander("📂 View by Category"):
-            category_summary = df.groupby(["Category", "Type"])["Amount"].sum().reset_index()
-            st.dataframe(category_summary)
+# --- Holiday Budget Tab ---
+with tabs[2]:
+    st.subheader("🏖️ Holiday Budget Tracker")
+    holiday_df = df[df["Section"] == "Holiday"]
+    st.write("Total Allocated:", f"${holiday_df['Amount'].sum():,.2f}")
+    st.dataframe(holiday_df, use_container_width=True)
 
-        with st.expander("📅 Yearly Summary"):
-            yearly_summary = df.groupby(["Year", "Type"])["Amount"].sum().reset_index()
-            st.dataframe(yearly_summary)
+# --- Child Expenses Tab ---
+with tabs[3]:
+    st.subheader("👶 Child Expenses Tracker")
+    child_df = df[df["Section"] == "Child"]
+    st.write("Total Allocated:", f"${child_df['Amount'].sum():,.2f}")
+    st.dataframe(child_df, use_container_width=True)
 
-        st.download_button("📥 Download Full Report", df.to_csv(index=False), file_name="pennywise_report.csv")
-
-# ========== ⚙️ GUIDE ==========
-with tab4:
-    st.header("📘 User Guide")
-    st.markdown("""
-    ### 💡 How to Use PennyWise
-    - **Dashboard:** See your income, expenses, savings, and overall budget trend.
-    - **Entries Tab:** Log multiple entries at once using the editable table. Default date is today; use the date picker to backdate.
-    - **Reports Tab:** Explore breakdowns by category, year, and export reports to CSV.
-    - **Edits:** You can correct mistakes by editing the entries directly in the editable table.
-    - **Coming Soon:**
-      - Cloud-based access
-      - Allocations to holiday budgets & child expenses
-      - Smart savings target alerts
-    """)
+# --- Settings Tab ---
+with tabs[4]:
+    st.subheader("⚙️ App Settings & Info")
+    st.info("✔️ This version of PennyWise supports editable tables, graph analytics, and separate budget sections.")
+    st.markdown("App version: **V5 - PennyWise**")
+    st.markdown("Data stored locally in `budget_data.csv`. Backup regularly!")
